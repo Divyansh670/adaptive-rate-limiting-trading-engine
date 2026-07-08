@@ -109,6 +109,18 @@ public class Order {
     public void markOpen() {
         this.status = OrderStatus.OPEN;
     }
+    public void fill(int fillQty) {
+        this.filledQuantity += fillQty;
+        if (this.filledQuantity >= this.quantity) {
+            this.status = OrderStatus.FILLED;
+        } else {
+            this.status = OrderStatus.PARTIALLY_FILLED;
+        }
+    }
+
+    public void cancel() {
+        this.status = OrderStatus.CANCELLED;
+    }
 
     public void setExpiresAt(LocalDateTime expiresAt) {
         this.expiresAt = expiresAt;
