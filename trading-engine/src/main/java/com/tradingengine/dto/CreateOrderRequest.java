@@ -66,4 +66,13 @@ public class CreateOrderRequest {
     public void setTif(TimeInForce tif) {
         this.tif = tif;
     }
+    private Integer ttlSeconds; // optional; null means no expiry
+
+    public Integer getTtlSeconds() {
+        return ttlSeconds;
+    }
+
+    public void setTtlSeconds(Integer ttlSeconds) {
+        this.ttlSeconds = ttlSeconds;
+    }
 }

@@ -94,6 +94,23 @@ public class OrderBook {
         return count;
     }
 
+    /**
+     * Removes a specific order from the book (used when an order expires or is cancelled).
+     * Cleans up the price level entirely if it becomes empty.
+     */
+    public boolean removeOrder(Order order) {
+        NavigableMap<BigDecimal, Deque<Order>> side = sideMapFor(order.getSide());
+        Deque<Order> ordersAtPrice = side.get(order.getPrice());
+        if (ordersAtPrice == null) {
+            return false;
+        }
+        boolean removed = ordersAtPrice.remove(order);
+        if (ordersAtPrice.isEmpty()) {
+            side.remove(order.getPrice());
+        }
+        return removed;
+    }
+
     private NavigableMap<BigDecimal, Deque<Order>> sideMapFor(Side side) {
         return side == Side.BUY ? bids : asks;
     }

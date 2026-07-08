@@ -121,6 +121,9 @@ public class Order {
     public void cancel() {
         this.status = OrderStatus.CANCELLED;
     }
+    public void expire() {
+        this.status = OrderStatus.EXPIRED;
+    }
 
     public void setExpiresAt(LocalDateTime expiresAt) {
         this.expiresAt = expiresAt;
