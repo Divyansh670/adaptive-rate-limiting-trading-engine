@@ -51,47 +51,8 @@ Compared to typical "rate limiter + gateway" portfolio projects, this one is dif
 ---
 
 ## Architecture Overview
+![Architecture Overview](architecture_overview.jpg)
 
-Client Request
-             │
-             ▼
-┌──────────────────────────┐
-│    Rate Limit Filter     │ ──► [429 Too Many Requests]
-│  (Redis, strategy pattern,│
-│   tightens on volatility)│
-└────────────┬─────────────┘
-             │ (Valid Request)
-             ▼
-┌──────────────────────────┐
-│     Order Controller     │
-│        (REST API)        │
-└────────────┬─────────────┘
-             │
-      ┌──────┴────────────────────────┐
-      ▼                               ▼
-┌──────────────────────────┐    ┌──────────────────────────┐
-│     Matching Engine      │    │     Order Repository     │
-│  (Price-time priority,   │◄───┤ (Postgres via Flyway DB) │
-│   handles partial fills) │    └──────────────────────────┘
-└────────────┬─────────────┘
-             │
-             ├─► Volatility Tracker (Rolling window)
-             ├─► Kafka Producer ──► [trade-events] ──► Audit Log
-             │
-             ▼
-┌──────────────────────────┐
-│        Order Book        │
-│  (In-memory per symbol,  │
-│   SkipListMap + Deque)   │
-└────────────┬─────────────┘
-             │
-      ┌──────┴────────────────────────┐
-      ▼                               ▼
-┌──────────────────────────┐    ┌──────────────────────────┐
-│     Expiry Scheduler     │    │     Circuit Breaker      │
-│  (Min-Heap @Scheduled,   │    │ (CLOSED/OPEN/HALF_OPEN,  │
-│   polls & evicts 2s)     │    │  protects downstream)    │
-└──────────────────────────┘    └──────────────────────────┘
 **Data flow for a single order:**
 1. Request hits the **Rate Limit Filter** — rejected with `429` if the client's tier-specific limit is exceeded. The limit itself is tighter automatically if recent trades show high price volatility.
 2. Passes to the **Order Controller**, which persists the order to Postgres and hands it to the **Matching Engine**.
