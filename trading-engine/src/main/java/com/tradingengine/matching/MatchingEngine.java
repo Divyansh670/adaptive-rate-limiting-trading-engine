@@ -1,6 +1,8 @@
 package com.tradingengine.matching;
 
 import com.tradingengine.domain.*;
+import com.tradingengine.dto.TradeEvent;
+import com.tradingengine.kafka.TradeEventProducer;
 import com.tradingengine.ratelimit.VolatilityTracker;
 import com.tradingengine.repository.OrderRepository;
 import com.tradingengine.repository.TradeRepository;
@@ -21,13 +23,16 @@ public class MatchingEngine {
     private final OrderRepository orderRepository;
     private final TradeRepository tradeRepository;
     private final VolatilityTracker volatilityTracker;
+    private final TradeEventProducer tradeEventProducer;
 
     public MatchingEngine(OrderRepository orderRepository,
                            TradeRepository tradeRepository,
-                           VolatilityTracker volatilityTracker) {
+                           VolatilityTracker volatilityTracker,
+                           TradeEventProducer tradeEventProducer) {
         this.orderRepository = orderRepository;
         this.tradeRepository = tradeRepository;
         this.volatilityTracker = volatilityTracker;
+        this.tradeEventProducer = tradeEventProducer;
     }
 
     /**
@@ -66,13 +71,19 @@ public class MatchingEngine {
             trades.add(trade);
             volatilityTracker.recordTrade(trade);
 
+            tradeEventProducer.publish(new TradeEvent(
+                    trade.getId(), incoming.getSymbol().getTicker(),
+                    buyOrder.getId(), sellOrder.getId(),
+                    trade.getPrice(), trade.getQuantity(), trade.getExecutedAt()
+            ));
+
             incoming.fill(matchedQty);
             resting.fill(matchedQty);
             orderRepository.save(incoming);
             orderRepository.save(resting);
 
-           if (resting.getRemainingQuantity() == 0) {
-                book.removeOrder(resting); // fully filled resting order leaves the book, cleaning up empty price levels
+            if (resting.getRemainingQuantity() == 0) {
+                book.removeOrder(resting);
             }
         }
 

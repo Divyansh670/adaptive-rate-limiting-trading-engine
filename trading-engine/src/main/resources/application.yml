@@ -10,7 +10,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: validate   # we let Flyway manage schema, not Hibernate auto-generation
+      ddl-auto: validate
     show-sql: true
     properties:
       hibernate:
@@ -27,6 +27,15 @@ spring:
 
   kafka:
     bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: trade-audit-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.tradingengine.dto"
 
 server:
-  port: 8081   # 8080 is taken by Redpanda Console, so our app uses 8081
+  port: 8081
