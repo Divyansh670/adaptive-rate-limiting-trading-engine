@@ -56,56 +56,42 @@ Client Request
              │
              ▼
 ┌──────────────────────────┐
-│    Rate Limit Filter     │ ──► [429 Too Many Requests] (If tier-specific limit exceeded)
-│  (Strategy Pattern,      │      ▲
-│   Redis-backed, tightens │      │ (Updates limit dynamically based on volatility)
-│   under high volatility) │ ─────┘
+│    Rate Limit Filter     │ ──► [429 Too Many Requests]
+│  (Redis, strategy pattern,│
+│   tightens on volatility)│
 └────────────┬─────────────┘
              │ (Valid Request)
              ▼
 ┌──────────────────────────┐
-│     Order Controller     │ ───┐
-│        (REST API)        │    │
-└────────────┬─────────────┘    │ 1. Persists Order
-             │                  ▼
-             │          ┌──────────────────────────┐
-             │          │     Order Repository     │
-             │          │ (PostgreSQL via Flyway)  │
-             │          └──────────────────────────┘
-             │ 2. Dispatches Order
-             ▼
-┌──────────────────────────┐
-│     Matching Engine      │
-│  (Price-time priority,   │
-│   handles partial fills) │
+│     Order Controller     │
+│        (REST API)        │
 └────────────┬─────────────┘
              │
-             │ 3. Evaluates & matches counterparty crossing prices
+      ┌──────┴────────────────────────┐
+      ▼                               ▼
+┌──────────────────────────┐    ┌──────────────────────────┐
+│     Matching Engine      │    │     Order Repository     │
+│  (Price-time priority,   │◄───┤ (Postgres via Flyway DB) │
+│   handles partial fills) │    └──────────────────────────┘
+└────────────┬─────────────┘
+             │
+             ├─► Volatility Tracker (Rolling window)
+             ├─► Kafka Producer ──► [trade-events] ──► Audit Log
+             │
              ▼
 ┌──────────────────────────┐
 │        Order Book        │
 │  (In-memory per symbol,  │
-│   ConcurrentSkipListMap  │
-│   + ArrayDeque queues)   │
+│   SkipListMap + Deque)   │
 └────────────┬─────────────┘
              │
-             ├─ [If Match Occurs] ────────────────► Save Trade (Permanent DB Audit Trail)
-             │                    ────────────────► Feed Volatility Tracker (Rolling window)
-             │                    ────────────────► Kafka Producer ──► [trade-events] ──► Async Audit Log
-             │
-             ├─ [If Unmatched Remaining with TTL]
-             │
-             ▼
-┌──────────────────────────┐
-│     Expiry Scheduler     │ ───┐
-│     (Min-Heap backed     │    │ 4. Background thread runs every 2 seconds:
-│      with @Scheduled)    │    │    polls min-heap and evicts expired orders
-└──────────────────────────┘    │    cleanly from the Order Book
-                                ▼
-                        ┌──────────────────────────┐
-                        │     Circuit Breaker      │ (Isolated resilience pattern:
-                        │ (CLOSED/OPEN/HALF_OPEN)  │  trips open after repeated errors
-                        └──────────────────────────┘  to protect downstream exchange)
+      ┌──────┴────────────────────────┐
+      ▼                               ▼
+┌──────────────────────────┐    ┌──────────────────────────┐
+│     Expiry Scheduler     │    │     Circuit Breaker      │
+│  (Min-Heap @Scheduled,   │    │ (CLOSED/OPEN/HALF_OPEN,  │
+│   polls & evicts 2s)     │    │  protects downstream)    │
+└──────────────────────────┘    └──────────────────────────┘
 **Data flow for a single order:**
 1. Request hits the **Rate Limit Filter** — rejected with `429` if the client's tier-specific limit is exceeded. The limit itself is tighter automatically if recent trades show high price volatility.
 2. Passes to the **Order Controller**, which persists the order to Postgres and hands it to the **Matching Engine**.
