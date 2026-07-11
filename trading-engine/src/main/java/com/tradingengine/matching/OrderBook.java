@@ -108,6 +108,7 @@ public class OrderBook {
         }
         return removed;
     }
+    
 
     private NavigableMap<BigDecimal, Deque<Order>> sideMapFor(Side side) {
         return side == Side.BUY ? bids : asks;
