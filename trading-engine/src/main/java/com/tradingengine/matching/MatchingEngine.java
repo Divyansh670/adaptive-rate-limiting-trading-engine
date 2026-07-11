@@ -1,12 +1,12 @@
 package com.tradingengine.matching;
 
 import com.tradingengine.domain.*;
+import com.tradingengine.ratelimit.VolatilityTracker;
 import com.tradingengine.repository.OrderRepository;
 import com.tradingengine.repository.TradeRepository;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
@@ -20,10 +20,14 @@ public class MatchingEngine {
 
     private final OrderRepository orderRepository;
     private final TradeRepository tradeRepository;
+    private final VolatilityTracker volatilityTracker;
 
-    public MatchingEngine(OrderRepository orderRepository, TradeRepository tradeRepository) {
+    public MatchingEngine(OrderRepository orderRepository,
+                           TradeRepository tradeRepository,
+                           VolatilityTracker volatilityTracker) {
         this.orderRepository = orderRepository;
         this.tradeRepository = tradeRepository;
+        this.volatilityTracker = volatilityTracker;
     }
 
     /**
@@ -38,15 +42,15 @@ public class MatchingEngine {
         while (incoming.getRemainingQuantity() > 0) {
             BigDecimal oppositeBestPrice = isBuy ? book.getBestAskPrice() : book.getBestBidPrice();
             if (oppositeBestPrice == null) {
-                break; // nothing to match against
+                break;
             }
 
             boolean pricesCross = isBuy
-                    ? incoming.getPrice().compareTo(oppositeBestPrice) >= 0   // buyer willing to pay >= best ask
-                    : incoming.getPrice().compareTo(oppositeBestPrice) <= 0;  // seller willing to accept <= best bid
+                    ? incoming.getPrice().compareTo(oppositeBestPrice) >= 0
+                    : incoming.getPrice().compareTo(oppositeBestPrice) <= 0;
 
             if (!pricesCross) {
-                break; // best available price isn't good enough to match
+                break;
             }
 
             Deque<Order> restingQueue = isBuy ? book.getOrdersAtBestAsk() : book.getOrdersAtBestBid();
@@ -60,25 +64,24 @@ public class MatchingEngine {
             Trade trade = new Trade(buyOrder, sellOrder, incoming.getSymbol(), oppositeBestPrice, matchedQty);
             tradeRepository.save(trade);
             trades.add(trade);
+            volatilityTracker.recordTrade(trade);
 
             incoming.fill(matchedQty);
             resting.fill(matchedQty);
             orderRepository.save(incoming);
             orderRepository.save(resting);
 
-            if (resting.getRemainingQuantity() == 0) {
-                restingQueue.pollFirst(); // fully filled resting order leaves the book
+           if (resting.getRemainingQuantity() == 0) {
+                book.removeOrder(resting); // fully filled resting order leaves the book, cleaning up empty price levels
             }
         }
 
-        // Handle whatever remains of the incoming order based on its TIF
         if (incoming.getRemainingQuantity() > 0) {
             if (incoming.getTif() == TimeInForce.GTC) {
                 incoming.markOpen();
                 orderRepository.save(incoming);
-                book.addOrder(incoming); // rest in the book, waiting for a future match
+                book.addOrder(incoming);
             } else {
-                // IOC and FOK never rest in the book
                 incoming.cancel();
                 orderRepository.save(incoming);
             }

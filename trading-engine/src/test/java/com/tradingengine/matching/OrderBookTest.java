@@ -58,4 +58,20 @@ class OrderBookTest {
         assertEquals(null, book.getBestBidPrice());
         assertEquals(null, book.getBestAskPrice());
     }
+
+    @Test
+    void emptyPriceLevelIsRemovedAfterFullMatch() {
+        OrderBook book = new OrderBook("MSFT");
+        Symbol symbol = new Symbol("MSFT");
+
+        Order sell1 = new Order(symbol, Side.SELL, new BigDecimal("100.00"), 5, TimeInForce.GTC);
+        book.addOrder(sell1);
+        book.removeOrder(sell1); // simulates a full match removing it
+
+        Order sell2 = new Order(symbol, Side.SELL, new BigDecimal("110.00"), 5, TimeInForce.GTC);
+        book.addOrder(sell2);
+
+        // Best ask must now correctly be 110, not the stale, emptied 100 level
+        assertEquals(new BigDecimal("110.00"), book.getBestAskPrice());
+    }
 }

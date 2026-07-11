@@ -5,37 +5,33 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 
-/**
- * Token Bucket algorithm: each client gets a bucket that refills at a fixed rate.
- * Every request consumes one token. If the bucket is empty, the request is rejected.
- * Allows small bursts (up to bucket capacity) but enforces a steady average rate.
- */
 @Component
 public class TokenBucketRateLimiter implements RateLimiter {
 
-    private static final int CAPACITY = 10;      // max tokens in the bucket
-    private static final int REFILL_PER_WINDOW = 10; // tokens added per window
-    private static final Duration WINDOW = Duration.ofSeconds(10); // refill window
+    private static final int NORMAL_CAPACITY = 10;
+    private static final int HIGH_VOLATILITY_CAPACITY = 4; // tightened under volatility
+    private static final Duration WINDOW = Duration.ofSeconds(10);
 
     private final StringRedisTemplate redis;
+    private final VolatilityTracker volatilityTracker;
 
-    public TokenBucketRateLimiter(StringRedisTemplate redis) {
+    public TokenBucketRateLimiter(StringRedisTemplate redis, VolatilityTracker volatilityTracker) {
         this.redis = redis;
+        this.volatilityTracker = volatilityTracker;
     }
 
     @Override
     public boolean tryAcquire(String clientId) {
         String key = "ratelimit:tokenbucket:" + clientId;
+        int capacity = volatilityTracker.isHighVolatility() ? HIGH_VOLATILITY_CAPACITY : NORMAL_CAPACITY;
 
-        // Simplified fixed-window approximation of token bucket:
-        // increment a counter that resets every WINDOW; reject if it exceeds CAPACITY.
         Long count = redis.opsForValue().increment(key);
         if (count == null) {
             return false;
         }
         if (count == 1) {
-            redis.expire(key, WINDOW); // start the window on the first request
+            redis.expire(key, WINDOW);
         }
-        return count <= CAPACITY;
+        return count <= capacity;
     }
 }

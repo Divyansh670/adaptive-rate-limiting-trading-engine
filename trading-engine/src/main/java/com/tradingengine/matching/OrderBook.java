@@ -9,7 +9,6 @@ import java.util.Comparator;
 import java.util.Deque;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 /**
@@ -19,8 +18,6 @@ import java.util.concurrent.ConcurrentSkipListMap;
  * - Bids (BUY orders) are sorted highest price first (best price to sell into).
  * - Asks (SELL orders) are sorted lowest price first (best price to buy from).
  * Within the same price level, orders are kept in a FIFO queue (earliest first).
- * <p>
- * This class is insert-only for now. Matching logic is added in Step 4.
  */
 public class OrderBook {
 
@@ -95,8 +92,9 @@ public class OrderBook {
     }
 
     /**
-     * Removes a specific order from the book (used when an order expires or is cancelled).
-     * Cleans up the price level entirely if it becomes empty.
+     * Removes a specific order from the book (used when an order expires, is cancelled,
+     * or is fully filled during matching). Cleans up the price level entirely if it
+     * becomes empty, preventing stale empty price levels from corrupting best-price lookups.
      */
     public boolean removeOrder(Order order) {
         NavigableMap<BigDecimal, Deque<Order>> side = sideMapFor(order.getSide());
