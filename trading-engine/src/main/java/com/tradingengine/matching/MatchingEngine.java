@@ -1,11 +1,13 @@
 package com.tradingengine.matching;
 
 import com.tradingengine.domain.*;
+import com.tradingengine.dto.OrderBookSnapshot;
 import com.tradingengine.dto.TradeEvent;
 import com.tradingengine.kafka.TradeEventProducer;
 import com.tradingengine.ratelimit.VolatilityTracker;
 import com.tradingengine.repository.OrderRepository;
 import com.tradingengine.repository.TradeRepository;
+import com.tradingengine.websocket.DashboardBroadcastService;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -24,15 +26,18 @@ public class MatchingEngine {
     private final TradeRepository tradeRepository;
     private final VolatilityTracker volatilityTracker;
     private final TradeEventProducer tradeEventProducer;
+    private final DashboardBroadcastService broadcastService;
 
     public MatchingEngine(OrderRepository orderRepository,
                            TradeRepository tradeRepository,
                            VolatilityTracker volatilityTracker,
-                           TradeEventProducer tradeEventProducer) {
+                           TradeEventProducer tradeEventProducer,
+                           DashboardBroadcastService broadcastService) {
         this.orderRepository = orderRepository;
         this.tradeRepository = tradeRepository;
         this.volatilityTracker = volatilityTracker;
         this.tradeEventProducer = tradeEventProducer;
+        this.broadcastService = broadcastService;
     }
 
     /**
@@ -71,11 +76,13 @@ public class MatchingEngine {
             trades.add(trade);
             volatilityTracker.recordTrade(trade);
 
-            tradeEventProducer.publish(new TradeEvent(
+            TradeEvent event = new TradeEvent(
                     trade.getId(), incoming.getSymbol().getTicker(),
                     buyOrder.getId(), sellOrder.getId(),
                     trade.getPrice(), trade.getQuantity(), trade.getExecutedAt()
-            ));
+            );
+            tradeEventProducer.publish(event);
+            broadcastService.broadcastTrade(event);
 
             incoming.fill(matchedQty);
             resting.fill(matchedQty);
@@ -85,6 +92,10 @@ public class MatchingEngine {
             if (resting.getRemainingQuantity() == 0) {
                 book.removeOrder(resting);
             }
+
+            broadcastService.broadcastOrderBook(new OrderBookSnapshot(
+                    incoming.getSymbol().getTicker(), book.getBestBidPrice(), book.getBestAskPrice(), book.totalOrderCount()
+            ));
         }
 
         if (incoming.getRemainingQuantity() > 0) {
