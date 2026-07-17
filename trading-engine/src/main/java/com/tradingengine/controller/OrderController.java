@@ -56,7 +56,14 @@ public class OrderController {
         Order saved = orderRepository.save(order);
 
         OrderBook book = orderBookRegistry.getOrCreate(symbol.getTicker());
-        List<Trade> trades = matchingEngine.match(saved, book);
+
+        // Serialize matching per symbol's order book to prevent race conditions
+        // where two concurrent orders could both read a stale remainingQuantity
+        // from the same resting order and over-fill it (producing negative fills).
+        List<Trade> trades;
+        synchronized (book) {
+            trades = matchingEngine.match(saved, book);
+        }
 
         if (saved.getExpiresAt() != null && saved.getStatus() == com.tradingengine.domain.OrderStatus.OPEN) {
             expiryQueue.schedule(saved);

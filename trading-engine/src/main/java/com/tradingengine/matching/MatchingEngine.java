@@ -92,10 +92,6 @@ public class MatchingEngine {
             if (resting.getRemainingQuantity() == 0) {
                 book.removeOrder(resting);
             }
-
-            broadcastService.broadcastOrderBook(new OrderBookSnapshot(
-                    incoming.getSymbol().getTicker(), book.getBestBidPrice(), book.getBestAskPrice(), book.totalOrderCount()
-            ));
         }
 
         if (incoming.getRemainingQuantity() > 0) {
@@ -108,6 +104,10 @@ public class MatchingEngine {
                 orderRepository.save(incoming);
             }
         }
+
+        broadcastService.broadcastOrderBook(new OrderBookSnapshot(
+                incoming.getSymbol().getTicker(), book.getBestBidPrice(), book.getBestAskPrice(), book.totalOrderCount()
+        ));
 
         return trades;
     }
