@@ -1,5 +1,6 @@
 package com.tradingengine.ratelimit;
 
+import com.tradingengine.metrics.MetricsTracker;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -13,16 +14,17 @@ import java.io.IOException;
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private final RateLimitService rateLimitService;
+    private final MetricsTracker metricsTracker;
 
-    public RateLimitFilter(RateLimitService rateLimitService) {
+    public RateLimitFilter(RateLimitService rateLimitService, MetricsTracker metricsTracker) {
         this.rateLimitService = rateLimitService;
+        this.metricsTracker = metricsTracker;
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
 
-        // Only rate-limit order submission endpoints
         if (!request.getRequestURI().startsWith("/orders")) {
             chain.doFilter(request, response);
             return;
@@ -45,6 +47,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         boolean allowed = rateLimitService.isAllowed(tier, clientId);
 
         if (!allowed) {
+            metricsTracker.recordRateLimitRejection();
             response.setStatus(429);
             response.setContentType("application/json");
             response.getWriter().write("{\"error\":\"Rate limit exceeded\",\"tier\":\"" + tier + "\"}");

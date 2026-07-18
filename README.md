@@ -99,6 +99,15 @@ Compared to typical "rate limiter + gateway" portfolio projects, this one is dif
 - **Step 10 — Metrics & polish:** Matching latency (p99), throughput (orders/sec), and rate-limit rejection rate surfaced on the dashboard; final README polish and a recorded demo video.
 
 ---
+## Load Testing Results
+
+Measured via `/metrics` endpoint after running batches of concurrent order submissions (10–50 simultaneous requests via parallel PowerShell jobs):
+
+- **69 orders processed, 40 trades matched, 0 errors, 0 unintended rate-limit rejections** across multiple concurrent test runs
+- **~91ms average end-to-end latency per order** — this includes synchronous PostgreSQL writes (order + trade persistence) and a Kafka publish inside the critical path, not just the in-memory matching step
+- **Correctness under concurrency verified separately**: a dedicated 10-thread stress test firing simultaneous orders against a single resting order produced zero over-fills and zero negative quantities, confirming the `synchronized(book)` fix (see commit history) correctly serializes matching per symbol
+
+**Honest caveat:** the in-memory matching algorithm itself (order book lookup + fill) is not the bottleneck here — profiling shows most of the ~91ms is spent on synchronous DB writes and the Kafka producer call. A natural next optimization would be moving trade persistence fully onto the async Kafka consumer path (already built in Step 8) rather than writing to Postgres directly inside the matching engine's critical section.
 
 ## Running This Project Locally
 

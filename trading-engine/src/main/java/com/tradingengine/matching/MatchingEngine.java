@@ -4,6 +4,7 @@ import com.tradingengine.domain.*;
 import com.tradingengine.dto.OrderBookSnapshot;
 import com.tradingengine.dto.TradeEvent;
 import com.tradingengine.kafka.TradeEventProducer;
+import com.tradingengine.metrics.MetricsTracker;
 import com.tradingengine.ratelimit.VolatilityTracker;
 import com.tradingengine.repository.OrderRepository;
 import com.tradingengine.repository.TradeRepository;
@@ -27,17 +28,20 @@ public class MatchingEngine {
     private final VolatilityTracker volatilityTracker;
     private final TradeEventProducer tradeEventProducer;
     private final DashboardBroadcastService broadcastService;
+    private final MetricsTracker metricsTracker;
 
     public MatchingEngine(OrderRepository orderRepository,
                            TradeRepository tradeRepository,
                            VolatilityTracker volatilityTracker,
                            TradeEventProducer tradeEventProducer,
-                           DashboardBroadcastService broadcastService) {
+                           DashboardBroadcastService broadcastService,
+                           MetricsTracker metricsTracker) {
         this.orderRepository = orderRepository;
         this.tradeRepository = tradeRepository;
         this.volatilityTracker = volatilityTracker;
         this.tradeEventProducer = tradeEventProducer;
         this.broadcastService = broadcastService;
+        this.metricsTracker = metricsTracker;
     }
 
     /**
@@ -46,6 +50,8 @@ public class MatchingEngine {
      * Returns the list of trades produced.
      */
     public List<Trade> match(Order incoming, OrderBook book) {
+        long startNanos = System.nanoTime();
+
         List<Trade> trades = new ArrayList<>();
         boolean isBuy = incoming.getSide() == Side.BUY;
 
@@ -108,6 +114,8 @@ public class MatchingEngine {
         broadcastService.broadcastOrderBook(new OrderBookSnapshot(
                 incoming.getSymbol().getTicker(), book.getBestBidPrice(), book.getBestAskPrice(), book.totalOrderCount()
         ));
+
+        metricsTracker.recordMatchingTime(System.nanoTime() - startNanos);
 
         return trades;
     }

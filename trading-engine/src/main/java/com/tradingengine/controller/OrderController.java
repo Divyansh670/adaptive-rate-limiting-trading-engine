@@ -8,6 +8,7 @@ import com.tradingengine.matching.ExpiryQueue;
 import com.tradingengine.matching.MatchingEngine;
 import com.tradingengine.matching.OrderBook;
 import com.tradingengine.matching.OrderBookRegistry;
+import com.tradingengine.metrics.MetricsTracker;
 import com.tradingengine.repository.OrderRepository;
 import com.tradingengine.repository.SymbolRepository;
 import jakarta.validation.Valid;
@@ -28,17 +29,20 @@ public class OrderController {
     private final OrderBookRegistry orderBookRegistry;
     private final MatchingEngine matchingEngine;
     private final ExpiryQueue expiryQueue;
+    private final MetricsTracker metricsTracker;
 
     public OrderController(SymbolRepository symbolRepository,
                             OrderRepository orderRepository,
                             OrderBookRegistry orderBookRegistry,
                             MatchingEngine matchingEngine,
-                            ExpiryQueue expiryQueue) {
+                            ExpiryQueue expiryQueue,
+                            MetricsTracker metricsTracker) {
         this.symbolRepository = symbolRepository;
         this.orderRepository = orderRepository;
         this.orderBookRegistry = orderBookRegistry;
         this.matchingEngine = matchingEngine;
         this.expiryQueue = expiryQueue;
+        this.metricsTracker = metricsTracker;
     }
 
     @PostMapping
@@ -54,6 +58,7 @@ public class OrderController {
         }
 
         Order saved = orderRepository.save(order);
+        metricsTracker.recordOrder();
 
         OrderBook book = orderBookRegistry.getOrCreate(symbol.getTicker());
 
@@ -64,6 +69,7 @@ public class OrderController {
         synchronized (book) {
             trades = matchingEngine.match(saved, book);
         }
+        metricsTracker.recordTrades(trades.size());
 
         if (saved.getExpiresAt() != null && saved.getStatus() == com.tradingengine.domain.OrderStatus.OPEN) {
             expiryQueue.schedule(saved);
